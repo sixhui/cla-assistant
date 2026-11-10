@@ -40,6 +40,19 @@ class WebhookService {
     }
 
     async getRepoHook(owner, repo, token) {
+        // When a GitHub App is configured and installed for this repository, events are
+        // delivered through the App-level webhook; treat that as an active event source
+        // instead of requiring a legacy repository webhook.
+        if (config.server.github.app && config.server.github.app.appId) {
+            try {
+                const installation = await github.getInstallationForRepo(owner, repo)
+                if (installation && installation.data && installation.data.id) {
+                    return { id: 'github-app-installation-' + installation.data.id, active: true, events: installation.data.events || [] }
+                }
+            } catch (error) {
+                logger.info('Could not verify GitHub App installation for ' + owner + '/' + repo + ', falling back to repo webhook check')
+            }
+        }
         let hook = await this._getHook(owner, repo, token)
         if (!hook) {
             try {

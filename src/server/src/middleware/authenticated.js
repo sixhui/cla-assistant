@@ -9,14 +9,7 @@ const { isUserAppAuthenticated } = require('../util')
 
 function authenticateForAdminOnlyApi(req, res, next) {
     passport.authenticate('token', { session: false }, function (err, user) {
-        if (err) {
-            return next(err)
-        }
-        try {
-            user = user ? user : req.user
-        } catch (error) {
-            throw new Error(error)
-        }
+        user = user ? user : req.user
         if (!user) {
             return res.status(401).json({ message: 'Incorrect token credentials' })
         }
