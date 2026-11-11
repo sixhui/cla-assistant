@@ -119,6 +119,10 @@ module.exports = {
                 '/api/github/getInstallationMeta',
             ],
             authenticated: [
+                '/api/analytics/summary',
+                '/api/analytics/repositories',
+                '/api/analytics/trends',
+                '/api/analytics/signers',
                 '/api/cla/getAll',
                 '/api/cla/getSignedCLA',
                 '/api/cla/getSignaturePdf',

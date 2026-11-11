@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>签约数据分析 - CLA Assistant</title>
+<script src="echarts.min.js"></script>
+<style>
+    :root { --brand:#0794c6; --bg:#f4f6f8; --card:#fff; --line:#e3e8ec; --text:#222; --muted:#777; }
+    * { box-sizing:border-box; }
+    body { margin:0; font-family:"Segoe UI","Microsoft YaHei",sans-serif; background:var(--bg); color:var(--text); }
+    header { background:var(--card); border-bottom:1px solid var(--line); padding:14px 28px; display:flex; align-items:center; gap:14px; }
+    header h1 { font-size:18px; margin:0; }
+    header a { color:var(--brand); text-decoration:none; font-size:13px; margin-left:auto; }
+    .wrap { max-width:1280px; margin:0 auto; padding:22px 28px 60px; }
+    .cards { display:grid; grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:14px; margin-bottom:22px; }
+    .card { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:16px 18px; }
+    .card .k { font-size:12px; color:var(--muted); margin-bottom:6px; }
+    .card .v { font-size:26px; font-weight:600; }
+    .panel { background:var(--card); border:1px solid var(--line); border-radius:8px; padding:18px; margin-bottom:22px; }
+    .panel h2 { font-size:15px; margin:0 0 12px; }
+    #trendChart { width:100%; height:280px; }
+    .range-btns { float:right; display:flex; gap:6px; }
+    .range-btns button { border:1px solid var(--line); background:#fff; border-radius:5px; padding:3px 12px; font-size:12px; cursor:pointer; }
+    .range-btns button.active { background:var(--brand); color:#fff; border-color:var(--brand); }
+    .filters { display:flex; flex-wrap:wrap; gap:10px; align-items:flex-end; margin-bottom:14px; }
+    .filters label { display:block; font-size:12px; color:var(--muted); margin-bottom:4px; }
+    .filters select, .filters input { border:1px solid var(--line); border-radius:5px; padding:6px 8px; font-size:13px; background:#fff; min-width:130px; }
+    .filters input[type=date] { min-width:120px; }
+    .btn { border:none; border-radius:5px; padding:7px 18px; font-size:13px; cursor:pointer; }
+    .btn.primary { background:var(--brand); color:#fff; }
+    .btn.ghost { background:#fff; border:1px solid var(--line); color:var(--text); }
+    table { width:100%; border-collapse:collapse; font-size:13px; }
+    th, td { text-align:left; padding:8px 10px; border-bottom:1px solid var(--line); white-space:nowrap; }
+    th { color:var(--muted); font-weight:500; background:#fafbfc; position:sticky; top:0; }
+    td.mono { font-family:Consolas,monospace; }
+    td a { color:var(--brand); text-decoration:none; }
+    .tbl-wrap { overflow-x:auto; }
+    .pager { display:flex; gap:8px; align-items:center; justify-content:flex-end; margin-top:14px; font-size:13px; }
+    .pager button { border:1px solid var(--line); background:#fff; border-radius:5px; padding:4px 12px; cursor:pointer; }
+    .pager button:disabled { opacity:.4; cursor:default; }
+    #loginTip { display:none; background:#fff8e6; border:1px solid #f0d47a; border-radius:8px; padding:18px; margin:40px 0; text-align:center; }
+    .revoked { color:#c0392b; }
+    .loading { color:var(--muted); font-size:13px; }
+</style>
+</head>
+<body>
+<header>
+    <h1>签约数据分析</h1>
+    <a href="/" target="_self">&larr; 返回 CLA Assistant</a>
+</header>
+<div class="wrap">
+    <div id="loginTip">请先以管理员身份 <a href="/">登录 CLA Assistant</a> 后再访问本页。</div>
+
+    <div class="cards" id="cards">
+        <div class="card"><div class="k">签约总数</div><div class="v" id="mTotal">-</div></div>
+        <div class="card"><div class="k">签约用户数（去重）</div><div class="v" id="mSigners">-</div></div>
+        <div class="card"><div class="k">关联仓库数</div><div class="v" id="mRepos">-</div></div>
+        <div class="card"><div class="k">最近签约</div><div class="v" id="mLatest" style="font-size:17px">-</div></div>
+    </div>
+
+    <div class="panel">
+        <h2>签约时间趋势（每日新增）
+            <span class="range-btns">
+                <button data-days="30" class="active">30 天</button>
+                <button data-days="90">90 天</button>
+                <button data-days="365">1 年</button>
+            </span>
+        </h2>
+        <div id="trendChart"></div>
+    </div>
+
+    <div class="panel">
+        <h2>签约记录</h2>
+        <div class="filters">
+            <div><label>仓库</label><select id="fRepo"><option value="">全部</option></select></div>
+            <div><label>协议版本</label><select id="fVersion"><option value="">全部</option></select></div>
+            <div><label>GitHub 用户</label><input id="fUser" placeholder="模糊搜索"></div>
+            <div><label>开始日期</label><input type="date" id="fFrom"></div>
+            <div><label>结束日期</label><input type="date" id="fTo"></div>
+            <button class="btn primary" id="fSearch">查询</button>
+            <button class="btn ghost" id="fReset">重置</button>
+        </div>
+        <div class="tbl-wrap">
+            <table id="tbl">
+                <thead><tr id="thead"></tr></thead>
+                <tbody id="tbody"><tr><td colspan="9" class="loading">加载中…</td></tr></tbody>
+            </table>
+        </div>
+        <div class="pager">
+            <span id="pageInfo">-</span>
+            <button id="prevPage">&larr; 上一页</button>
+            <button id="nextPage">下一页 &rarr;</button>
+            <select id="pageSize" style="min-width:80px">
+                <option>20</option><option>50</option><option>100</option>
+            </select>
+        </div>
+    </div>
+</div>
+
+<script>
+(function () {
+    var state = { page: 1, pageSize: 20, total: 0, trendDays: 30, unauthorized: false };
+    var chart = null;
+
+    function fmtTime(iso) {
+        if (!iso) { return "-"; }
+        var d = new Date(iso);
+        function p(n) { return (n < 10 ? "0" : "") + n; }
+        return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+    }
+
+    function api(path, body) {
+        return fetch("/api/analytics/" + path, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            credentials: "same-origin",
+            body: JSON.stringify(body || {})
+        }).then(function (r) {
+            if (r.status === 401 || r.status === 403) {
+                state.unauthorized = true;
+                document.getElementById("loginTip").style.display = "block";
+                throw new Error("unauthorized");
+            }
+            return r.json();
+        });
+    }
+
+    function loadSummary() {
+        return api("summary").then(function (d) {
+            document.getElementById("mTotal").textContent = d.totalSignatures;
+            document.getElementById("mSigners").textContent = d.uniqueSigners;
+            document.getElementById("mRepos").textContent = d.linkedRepositories;
+            document.getElementById("mLatest").textContent = fmtTime(d.latestSignatureAt);
+        });
+    }
+
+    function loadRepos() {
+        return api("repositories").then(function (d) {
+            var rs = document.getElementById("fRepo");
+            d.repos.forEach(function (r) {
+                var o = document.createElement("option");
+                o.value = r.repoId;
+                o.textContent = r.owner + "/" + r.repo;
+                rs.appendChild(o);
+            });
+            var vs = document.getElementById("fVersion");
+            d.versions.forEach(function (v) {
+                var o = document.createElement("option");
+                o.value = v;
+                o.textContent = String(v).slice(0, 8);
+                vs.appendChild(o);
+            });
+        });
+    }
+
+    function loadTrend() {
+        return api("trends", { days: state.trendDays }).then(function (d) {
+            if (!chart) { chart = echarts.init(document.getElementById("trendChart")); }
+            chart.setOption({
+                tooltip: { trigger: "axis" },
+                legend: { data: ["签约次数", "签约用户数"], top: 0 },
+                grid: { left: 40, right: 20, top: 34, bottom: 26 },
+                xAxis: { type: "category", data: d.daily.map(function (x) { return x._id; }) },
+                yAxis: { type: "value", minInterval: 1 },
+                series: [
+                    { name: "签约次数", type: "line", smooth: true, data: d.daily.map(function (x) { return x.count; }), areaStyle: { opacity: 0.15 } },
+                    { name: "签约用户数", type: "line", smooth: true, data: d.daily.map(function (x) { return x.uniqueSigners; }) }
+                ]
+            });
+        });
+    }
+
+    function tableColumns(records) {
+        var keys = [];
+        var seen = {};
+        ["fullName", "email"].forEach(function (k) {
+            seen[k] = true;
+            keys.push(k);
+        });
+        records.forEach(function (r) {
+            Object.keys(r.fields || {}).forEach(function (k) {
+                if (!seen[k]) { seen[k] = true; keys.push(k); }
+            });
+        });
+        return keys;
+    }
+
+    function esc(s) {
+        return String(s == null ? "" : s).replace(/[&<>"']/g, function (c) {
+            return { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c];
+        });
+    }
+
+    function loadSigners() {
+        var tbody = document.getElementById("tbody");
+        tbody.innerHTML = "<tr><td colspan=\u00229\u0022 class=\u0022loading\u0022>加载中…</td></tr>";
+        return api("signers", {
+            page: state.page,
+            pageSize: state.pageSize,
+            repoId: document.getElementById("fRepo").value || undefined,
+            version: document.getElementById("fVersion").value || undefined,
+            user: document.getElementById("fUser").value.trim() || undefined,
+            from: document.getElementById("fFrom").value || undefined,
+            to: document.getElementById("fTo").value || undefined
+        }).then(function (d) {
+            state.total = d.total;
+            var pages = Math.max(1, Math.ceil(d.total / state.pageSize));
+            if (state.page > pages) { state.page = pages; }
+            document.getElementById("pageInfo").textContent = "共 " + d.total + " 条 / 第 " + state.page + " / " + pages + " 页";
+            document.getElementById("prevPage").disabled = state.page <= 1;
+            document.getElementById("nextPage").disabled = state.page >= pages;
+
+            var cols = tableColumns(d.records);
+            var head = "<th>签署时间</th><th>GitHub 账号</th><th>仓库</th><th>版本</th>"
+                + cols.map(function (k) { return "<th>" + esc(k) + "</th>"; }).join("")
+                + "<th>签署文件</th>";
+            document.getElementById("thead").innerHTML = head;
+
+            var rows = d.records.map(function (r) {
+                var cells = "<td>" + fmtTime(r.signedAt) + "</td>"
+                    + "<td class=\u0022mono\u0022>" + esc(r.user) + (r.revokedAt ? " <span class=\u0022revoked\u0022>(已撤销)</span>" : "") + "</td>"
+                    + "<td>" + esc((r.owner ? r.owner + "/" : "") + r.repo) + "</td>"
+                    + "<td class=\u0022mono\u0022 title=\u0022" + esc(r.version) + "\u0022>" + esc(String(r.version || "").slice(0, 8)) + "</td>";
+                cols.forEach(function (k) {
+                    cells += "<td>" + esc((r.fields || {})[k]) + "</td>";
+                });
+                cells += "<td><a href=\u0022/api/cla/getSignaturePdf?signatureId=" + encodeURIComponent(r.signatureId)
+                    + "&repoId=" + encodeURIComponent(r.repoId) + "\u0022 target=\u0022_blank\u0022>PDF</a></td>";
+                return "<tr>" + cells + "</tr>";
+            });
+            tbody.innerHTML = rows.length ? rows.join("") : "<tr><td colspan=\u00229\u0022 class=\u0022loading\u0022>没有匹配的记录</td></tr>";
+        });
+    }
+
+    function refresh() {
+        if (state.unauthorized) { return; }
+        loadSummary().catch(function () {});
+        loadTrend().catch(function () {});
+        loadSigners().catch(function () {});
+    }
+
+    document.querySelectorAll(".range-btns button").forEach(function (b) {
+        b.addEventListener("click", function () {
+            document.querySelectorAll(".range-btns button").forEach(function (x) { x.classList.remove("active"); });
+            b.classList.add("active");
+            state.trendDays = parseInt(b.dataset.days, 10);
+            loadTrend().catch(function () {});
+        });
+    });
+
+    document.getElementById("fSearch").addEventListener("click", function () { state.page = 1; loadSigners().catch(function () {}); });
+    document.getElementById("fReset").addEventListener("click", function () {
+        ["fRepo", "fVersion"].forEach(function (id) { document.getElementById(id).value = ""; });
+        ["fUser", "fFrom", "fTo"].forEach(function (id) { document.getElementById(id).value = ""; });
+        state.page = 1;
+        loadSigners().catch(function () {});
+    });
+    document.getElementById("prevPage").addEventListener("click", function () { if (state.page > 1) { state.page--; loadSigners().catch(function () {}); } });
+    document.getElementById("nextPage").addEventListener("click", function () { state.page++; loadSigners().catch(function () {}); });
+    document.getElementById("pageSize").addEventListener("change", function () {
+        state.pageSize = parseInt(this.value, 10); state.page = 1; loadSigners().catch(function () {});
+    });
+
+    loadRepos().then(refresh).catch(function () {});
+    window.addEventListener("resize", function () { if (chart) { chart.resize(); } });
+})();
+</script>
+</body>
+</html>
