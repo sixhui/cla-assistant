@@ -113,18 +113,56 @@ async function getInstallationForOrg(org) {
     return result
 }
 
+// Installation tokens are valid for one hour and the installation mapping
+// barely changes; cache both to avoid two extra serial round trips (lookup
+// + token exchange) in front of every single GitHub App API call.
+const installationCache = new Map() // key -> { value, expiresAt }
+const INSTALLATION_TTL_MS = 10 * 60 * 1000
+const TOKEN_SAFETY_MS = 5 * 60 * 1000
+
+function cacheGet(key) {
+    const entry = installationCache.get(key)
+    if (entry && entry.expiresAt > Date.now()) {
+        return entry.value
+    }
+    return null
+}
+
+function cacheSet(key, value, ttlMs) {
+    installationCache.set(key, { value, expiresAt: Date.now() + ttlMs })
+    if (installationCache.size > 200) {
+        const firstKey = installationCache.keys().next().value
+        installationCache.delete(firstKey)
+    }
+}
+
 async function getInstallationAccessTokenByInstallationID(installation_id) {
+    const cacheKey = 'token:' + installation_id
+    const cached = cacheGet(cacheKey)
+    if (cached) {
+        return cached
+    }
     const JWToctokit = new OctokitWithPluginsAndDefaults({
         authStrategy: createAppAuth,
         auth: config.server.github.app
     })
     const result = await callGithub(JWToctokit, 'apps', 'createInstallationAccessToken', { installation_id })
-    return result.data.token
+    const data = result.data || {}
+    const expiresAt = data.expires_at ? Date.parse(data.expires_at) : (Date.now() + 50 * 60 * 1000)
+    // hand back the token while it still has enough lifetime left
+    cacheSet(cacheKey, data.token, Math.max(60 * 1000, expiresAt - Date.now() - TOKEN_SAFETY_MS))
+    return data.token
 }
 
 async function getInstallationAccessTokenForUser(username) {
-    const installation = await getInstallationForUser(username)
-    return await getInstallationAccessTokenByInstallationID(installation.data.id)
+    const instKey = 'inst:user:' + username
+    let installationId = cacheGet(instKey)
+    if (!installationId) {
+        const installation = await getInstallationForUser(username)
+        installationId = installation.data.id
+        cacheSet(instKey, installationId, INSTALLATION_TTL_MS)
+    }
+    return await getInstallationAccessTokenByInstallationID(installationId)
 }
 
 async function getInstallationAccessTokenForRepo(owner, repo) {

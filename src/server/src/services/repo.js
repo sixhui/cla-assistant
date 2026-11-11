@@ -127,6 +127,11 @@ class RepoService {
     }
 
     async getAll(args) {
+        // With an empty selection (dashboard first paint, lazy-loaded repo
+        // candidates) return every linked repository instead of nothing.
+        if (!args.set || args.set.length === 0) {
+            return Repo.find({})
+        }
         const repoIds = []
         args.set.forEach((repo) => repoIds.push({
             repoId: repo.repoId

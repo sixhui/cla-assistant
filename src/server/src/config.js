@@ -103,7 +103,6 @@ module.exports = {
             ],
             external: [],
             admin_only: [
-                '/api/cla/getSignaturePdf',
                 '/api/cla/addSignature',
                 '/api/cla/hasSignature',
                 '/api/cla/terminateSignature',
@@ -116,12 +115,13 @@ module.exports = {
                 '/api/repo/remove',
                 '/api/repo/update',
                 '/api/repo/migrate',
-                '/api/cla/getAll',
                 '/api/cla/upload',
                 '/api/github/getInstallationMeta',
             ],
             authenticated: [
+                '/api/cla/getAll',
                 '/api/cla/getSignedCLA',
+                '/api/cla/getSignaturePdf',
                 '/api/cla/getLastSignature',
                 '/api/cla/countCLA',
                 '/api/cla/getDistinctClas',

@@ -237,13 +237,16 @@ app.use('/api', require('./middleware/authenticated'))
 // repo push permission for the repoId/orgId scope before we query.
 app.get('/api/cla/getSignaturePdf', async (req, res) => {
     try {
+        const adminUsers = config.server.github.admin_users || []
+        if (!req.user || (adminUsers.length > 0 && adminUsers.indexOf(req.user.login) < 0)) {
+            return res.status(403).send('Not allowed')
+        }
         const CLA = require('mongoose').model('CLA')
-        const scope = req.authorizedResource || {}
         const selection = { _id: req.args.signatureId }
-        if (scope.repoId) {
-            selection.repoId = String(scope.repoId)
-        } else if (scope.orgId) {
-            selection.ownerId = String(scope.orgId)
+        if (req.args.repoId) {
+            selection.repoId = String(req.args.repoId)
+        } else if (req.args.orgId) {
+            selection.ownerId = String(req.args.orgId)
         } else {
             return res.status(403).send('No authorized scope')
         }

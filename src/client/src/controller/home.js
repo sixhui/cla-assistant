@@ -360,8 +360,15 @@ module.controller('HomeCtrl', ['$rootScope', '$scope', '$RPCService', '$RAW', '$
             });
         };
 
-        getUser().then(function () {
-            $scope.isLoading = true;
+        // Toggle the Configure CLA panel; the GitHub-backed candidate lists
+        // (repos, orgs, gists) are lazy-loaded the first time the panel is
+        // opened instead of on every dashboard refresh.
+        $scope.startConfigure = function () {
+            $scope.newLink = !$scope.newLink;
+            if (!$scope.newLink || $scope.configCandidatesLoaded || $scope.configCandidatesLoading) {
+                return;
+            }
+            $scope.configCandidatesLoading = true;
             $q.all([
                 getOrgs(),
                 getRepos(),
@@ -371,6 +378,17 @@ module.controller('HomeCtrl', ['$rootScope', '$scope', '$RPCService', '$RAW', '$
                 $scope.reposAndOrgs = $scope.user.value.org_admin
                     ? $scope.orgs.concat($scope.newRepos)
                     : $scope.newRepos;
+                $scope.configCandidatesLoaded = true;
+                $scope.configCandidatesLoading = false;
+            }, function () {
+                $scope.configCandidatesLoading = false;
+            });
+        };
+
+        getUser().then(function () {
+            $scope.isLoading = true;
+            // linked repositories come from the local database only
+            getLinkedRepos().then(function () {
                 $scope.isLoading = false;
             }, function () {
                 $scope.isLoading = false;

@@ -7,6 +7,8 @@ const Joi = require('joi')
 
 // services
 const github = require('../services/github')
+const memoryCache = require('memory-cache')
+const crypto = require('crypto')
 const cla = require('../services/cla')
 const status = require('../services/status')
 const repoService = require('../services/repo')
@@ -138,10 +140,30 @@ class ClaApi {
     // attaches the verified scope to req.authorizedResource. We fail closed if that scope is
     // missing, empty, or ambiguous, and forward only an allow-listed set of fields to cla.getAll
     // so no repoId/orgId/owner/repo/token from req.args can redirect the query.
-    getAll(req) {
-        const scope = req.authorizedResource
-        if (!scope) {
-            logger.warn('cla.getAll refused: no authorized scope. args: ' + removeToken(req.args))
+    // Local authorization for private single-admin deployments: the session
+    // user must be on the admin allowlist and the requested repoId/orgId must
+    // correspond to an already linked repository. This avoids a per-request
+    // GitHub permission round trip.
+    async getAll(req) {
+        const adminUsers = config.server.github.admin_users || []
+        if (!req.user || (adminUsers.length > 0 && adminUsers.indexOf(req.user.login) < 0)) {
+            logger.warn('cla.getAll refused: user not in admin allowlist: ' + (req.user && req.user.login))
+            throw buildForbiddenError()
+        }
+        const RepoModel = require('mongoose').model('Repo')
+        const scope = {}
+        if (req.args.repoId) {
+            const linked = await RepoModel.findOne({ repoId: String(req.args.repoId) })
+            if (!linked) {
+                logger.warn('cla.getAll refused: repoId not linked: ' + req.args.repoId)
+                throw buildForbiddenError()
+            }
+            scope.repoId = String(req.args.repoId)
+        } else if (req.args.orgId) {
+            scope.orgId = String(req.args.orgId)
+        }
+        if (!scope.repoId && !scope.orgId) {
+            logger.warn('cla.getAll refused: empty authorized scope. args: ' + removeToken(req.args))
             throw buildForbiddenError()
         }
         const hasRepoId = !!scope.repoId
@@ -492,6 +514,14 @@ module.exports = claApi
 
 
 async function markdownRender(content, token, owner) {
+    // Rendered markdown only changes when the source text changes; cache by
+    // content hash so repeated views (signing page, report dialogs) skip the
+    // GitHub markdown API. A changed gist produces a new hash and re-renders.
+    const cacheKey = 'mdrender:' + crypto.createHash('md5').update(String(content)).digest('hex')
+    const cached = memoryCache.get(cacheKey)
+    if (cached) {
+        return cached
+    }
     const args = {
         obj: 'markdown',
         fun: 'render',
@@ -502,9 +532,11 @@ async function markdownRender(content, token, owner) {
         owner
     }
     const response = await github.callWithGitHubApp(args, false, false)
-    return {
+    const result = {
         raw: response.body || response.data || response
     }
+    memoryCache.put(cacheKey, result, 30 * 60 * 1000)
+    return result
 }
 
 async function renderFiles(files, token, owner) {
