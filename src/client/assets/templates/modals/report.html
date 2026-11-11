@@ -65,8 +65,12 @@ SPDX-License-Identifier: Apache-2.0
             <!-- <a class="col-sm-offset-1 col-sm-5" ng-href="{{contributor.html_url}}" target="space" >{{contributor.user_name}}</a> -->
             <div class="col-sm-offset-1 col-sm-3">{{contributor.user_name}}</div>
             <div class="col-sm-3">{{contributor.signed_at | date: 'medium'}}</div>
-            <div class="col-sm-3" ng-if="contributor.revoked_at != ''">{{contributor.revoked_at | date: 'medium'}}</div>
-            <div class="col-sm-3" ng-if="contributor.revoked_at == ''" style="text-align: center;">-</div>
+            <div class="col-sm-2" ng-if="contributor.revoked_at != ''">{{contributor.revoked_at | date: 'medium'}}</div>
+            <div class="col-sm-2" ng-if="contributor.revoked_at == ''" style="text-align: center;">-</div>
+            <div class="col-sm-2" ng-if="contributor.signature_id">
+                <a ng-href="/api/cla/getSignaturePdf?signatureId={{contributor.signature_id}}&repoId={{claItem.repoId}}" target="_blank" style="text-decoration: underline;">PDF</a>
+            </div>
+            <div class="col-sm-2" ng-if="!contributor.signature_id"></div>
         </div>
     </div>
 </div>

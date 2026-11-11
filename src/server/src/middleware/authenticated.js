@@ -72,7 +72,7 @@ function authenticateForAdminOnlyApi(req, res, next) {
 }
 
 module.exports = function (req, res, next) {
-    let requestedUrl = req.originalUrl.trim()
+    let requestedUrl = req.originalUrl.trim().split('?')[0]
     while (requestedUrl.endsWith('/')) {
         requestedUrl = requestedUrl.substring(0, requestedUrl.length - 1)
     }

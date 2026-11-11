@@ -130,6 +130,7 @@ module.controller('SettingsCtrl', ['$rootScope', '$scope', '$stateParams', '$RPC
 
         var buildContributor = function (signature, customKeys) {
             var contributor = {};
+            contributor.signature_id = signature._id;
             contributor.user_name = signature.user;
             contributor.repo_owner = signature.owner;
             contributor.repo_name = signature.repo;

@@ -20,6 +20,43 @@ const github = require('./github')
 const config = require('../config')
 const _ = require('lodash')
 
+const pdfService = require("./pdf")
+const emailService = require("./email")
+
+// Generate the signed-CLA PDF, persist it on the signature record and trigger
+// the notification email. Failures are logged but never break the sign flow.
+async function attachSignaturePdf(signature, gistData, item) {
+    try {
+        const files = (gistData && gistData.files) || {}
+        let claText = ""
+        Object.keys(files).some((name) => {
+            if (name !== "metadata" && files[name].content) {
+                claText = files[name].content
+                return true
+            }
+            return false
+        })
+        const pdfBuffer = await pdfService.generateSignaturePdf({
+            claText: claText,
+            owner: item.owner || item.org,
+            repo: item.repo,
+            gistUrl: item.gist,
+            gistVersion: signature.gist_version,
+            user: signature.user,
+            userId: signature.userId,
+            customFields: signature.custom_fields,
+            signedAt: signature.created_at
+        })
+        signature.pdf = pdfBuffer
+        await signature.save()
+        emailService.sendSignatureEmail(signature, pdfBuffer).catch((error) => {
+            logger.warn("Could not send signature email: " + (error && error.message))
+        })
+    } catch (error) {
+        logger.error("Could not generate signature PDF: " + (error && (error.stack || error)))
+    }
+}
+
 class ClaService {
 
     async _getGistObject(gist_url, token, owner) {
@@ -38,7 +75,9 @@ class ClaService {
                 gist_id: id,
                 cacheTime: 60 //seconds
             },
-            token: token,
+            // fall back to the instance PAT for anonymous (not signed in) visitors
+            // to avoid unauthenticated rate limits on a shared proxy egress IP
+            token: token || config.server.github.token,
             owner: owner
         }
         try {
@@ -321,7 +360,7 @@ class ClaService {
 
         logger.info(`temporary debug - query: ${JSON.stringify(query)}`)
 
-        let cla = await CLA.findOne(query, {}, {
+        let cla = await CLA.findOne(query, { pdf: 0 }, {
             sort: {
                 'created_at': -1
             }
@@ -648,6 +687,8 @@ class ClaService {
 
         const signature = await this.create(argsToCreate)
 
+        await attachSignaturePdf(signature, gist.data, item)
+
         return signature
     }
 
@@ -769,7 +810,7 @@ class ClaService {
 
         if (!args.gist.gist_version) {
             try {
-                return CLA.find(selection, {}, options)
+                return CLA.find(selection, { pdf: 0 }, options)
             } catch (error) {
                 logger.warn('Error occured when getting all signed CLAs for given repo without gist version' + error)
                 logger.warn('Api cla.getAll failed with selection ' + selection)
@@ -778,7 +819,7 @@ class ClaService {
             }
         }
         try {
-            const clas = await CLA.find(selection, {}, options)
+            const clas = await CLA.find(selection, { pdf: 0 }, options)
             if (!clas) {
                 throw new Error('no clas found')
             }

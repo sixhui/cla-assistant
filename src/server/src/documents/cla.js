@@ -19,6 +19,7 @@ const CLASchema = mongoose.Schema({
     user: String,
     userId: String,
     origin: String,
+    pdf: { type: Buffer },
     updated_at: Date
 })
 

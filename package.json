@@ -47,7 +47,10 @@
         "passport": "^0.4.1",
         "passport-accesstoken": "^0.1.0",
         "passport-github": "^1.1.0",
-        "x-frame-options": "^1.0.0"
+        "x-frame-options": "^1.0.0",
+        "pdfkit": "^0.13.0",
+        "nodemailer": "^6.9.13",
+        "global-agent": "^2.2.0"
     },
     "devDependencies": {
         "angular": "^1.8.2",

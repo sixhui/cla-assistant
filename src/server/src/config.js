@@ -77,7 +77,9 @@ module.exports = {
                 user: process.env.SMTP_USER,
                 pass: process.env.SMTP_PASS
             },
-            name: 'cla-assistant'
+            name: 'cla-assistant',
+            from: process.env.SMTP_FROM,
+            admin_emails: process.env.ADMIN_EMAILS
         },
 
         mongodb: {
@@ -101,6 +103,7 @@ module.exports = {
             ],
             external: [],
             admin_only: [
+                '/api/cla/getSignaturePdf',
                 '/api/cla/addSignature',
                 '/api/cla/hasSignature',
                 '/api/cla/terminateSignature',

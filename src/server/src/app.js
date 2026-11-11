@@ -231,6 +231,35 @@ async.series([
 // ////////////////////////////////////////////////////////////////////////////////////////////////
 app.use('/api', require('./middleware/authenticated'))
 
+// Signed-CLA PDF download. Returns a binary stream, so it cannot go through
+// the generic /api/:obj/:fun JSON channel. Authorization is enforced by the
+// admin-only middleware (see config api_access.admin_only), which verifies
+// repo push permission for the repoId/orgId scope before we query.
+app.get('/api/cla/getSignaturePdf', async (req, res) => {
+    try {
+        const CLA = require('mongoose').model('CLA')
+        const scope = req.authorizedResource || {}
+        const selection = { _id: req.args.signatureId }
+        if (scope.repoId) {
+            selection.repoId = String(scope.repoId)
+        } else if (scope.orgId) {
+            selection.ownerId = String(scope.orgId)
+        } else {
+            return res.status(403).send('No authorized scope')
+        }
+        const cla = await CLA.findOne(selection)
+        if (!cla || !cla.pdf) {
+            return res.status(404).send('Signature PDF not found')
+        }
+        res.set('Content-Type', 'application/pdf')
+        res.set('Content-Disposition', 'inline; filename="signed-cla-' + cla.user + '.pdf"')
+        return res.send(cla.pdf)
+    } catch (error) {
+        log.error(new Error(error).stack)
+        return res.status(500).send('Internal Server Error')
+    }
+})
+
 
 app.all('/api/:obj/:fun', async (req, res) => {
     res.set('Content-Type', 'application/json');
