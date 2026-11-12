@@ -41,8 +41,12 @@ function renderClaText(doc, text) {
         }
         if ((match = line.match(/^(#{1,6})\s+(.*)$/))) {
             const size = headingSizes[match[1].length - 1] || 11
+            // level 1-2 headings are centered, matching the signing page style
+            const align = match[1].length <= 2 ? "center" : "left"
             doc.moveDown(0.7)
-            doc.font(FONT_BOLD).fontSize(size).fillColor("#111111").text(stripMarkdown(match[2]))
+            doc.font(FONT_BOLD).fontSize(size)
+                .fillColor(match[1].length <= 2 ? "#1a3a5c" : "#111111")
+                .text(stripMarkdown(match[2]), { align: align })
             doc.moveDown(0.3)
             return
         }
