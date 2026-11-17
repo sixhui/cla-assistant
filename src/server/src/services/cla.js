@@ -26,6 +26,13 @@ const emailService = require("./email")
 // Generate the signed-CLA PDF, persist it on the signature record and trigger
 // the notification email. Failures are logged but never break the sign flow.
 async function attachSignaturePdf(signature, gistData, item) {
+    // Backfilled signatures (admin upload / addSignature API) were signed
+    // offline; do not auto-generate a PDF or send them the notification email.
+    const originTrail = String(signature.origin || "").split("|")
+    if (originTrail.indexOf("upload") >= 0 || originTrail.indexOf("addSignature") >= 0) {
+        logger.info("Skip PDF/email for backfilled signature of " + signature.user)
+        return
+    }
     try {
         const files = (gistData && gistData.files) || {}
         let claText = ""

@@ -116,7 +116,9 @@ class AnalyticsApi {
 
         const [total, records] = await Promise.all([
             CLA.countDocuments(query),
-            CLA.find(query, { pdf: 0 })
+            // exclude the heavy pdf blob but expose whether one exists
+            // (backfilled signatures have none)
+            CLA.find(query, { pdf: 0, hasPdf: { $gt: ["$pdf", null] } })
                 .sort({ created_at: -1 })
                 .skip((page - 1) * pageSize)
                 .limit(pageSize)
@@ -137,7 +139,7 @@ class AnalyticsApi {
                 version: r.gist_version,
                 signedAt: r.created_at,
                 revokedAt: r.revoked_at || null,
-                hasPdf: true,
+                hasPdf: r.hasPdf === true,
                 fields: parseCustomFields(r.custom_fields)
             }))
         }

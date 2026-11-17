@@ -225,8 +225,10 @@
                 cols.forEach(function (k) {
                     cells += "<td>" + esc((r.fields || {})[k]) + "</td>";
                 });
-                cells += "<td><a href=\u0022/api/cla/getSignaturePdf?signatureId=" + encodeURIComponent(r.signatureId)
-                    + "&repoId=" + encodeURIComponent(r.repoId) + "\u0022 target=\u0022_blank\u0022>PDF</a></td>";
+                cells += r.hasPdf
+                    ? '<td><a href="/api/cla/getSignaturePdf?signatureId=' + encodeURIComponent(r.signatureId)
+                        + '&repoId=' + encodeURIComponent(r.repoId) + '" target="_blank">PDF</a></td>'
+                    : '<td>-</td>';
                 return "<tr>" + cells + "</tr>";
             });
             tbody.innerHTML = rows.length ? rows.join("") : "<tr><td colspan=\u00229\u0022 class=\u0022loading\u0022>没有匹配的记录</td></tr>";

@@ -415,6 +415,12 @@ class ClaApi {
     async upload(req) {
         const signatures = req.args.signatures || []
         const uploadInitiator = req.user.login
+        // resolve the linked item once so each backfilled signer can trigger
+        // an immediate revalidation of their open pull requests
+        const item = await cla.getLinkedItem({
+            repo: req.args.repo,
+            owner: req.args.owner
+        })
 
         const promises = signatures.map(async signature => {
             try {
@@ -439,6 +445,15 @@ class ClaApi {
                 }
 
                 const signed = await cla.sign(args)
+                // revalidate open PRs of the backfilled signer (fire and
+                // forget; failures are logged inside)
+                updateUsersPullRequests({
+                    repo: req.args.repo,
+                    owner: req.args.owner,
+                    user: ghUser.login,
+                    item: item,
+                    token: item.token
+                })
                 return signed
 
             } catch (error) {
