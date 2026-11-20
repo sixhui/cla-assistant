@@ -116,14 +116,23 @@ class AnalyticsApi {
 
         const [total, records] = await Promise.all([
             CLA.countDocuments(query),
-            // exclude the heavy pdf blob but expose whether one exists
-            // (backfilled signatures have none)
-            CLA.find(query, { pdf: 0, hasPdf: { $gt: ["$pdf", null] } })
+            // exclude the heavy pdf blob from the listing
+            CLA.find(query, { pdf: 0 })
                 .sort({ created_at: -1 })
                 .skip((page - 1) * pageSize)
                 .limit(pageSize)
                 .lean()
         ])
+
+        // a follow-up existence check tells which of the current page
+        // records carry a pdf (backfilled signatures have none) without
+        // loading the blob - MongoDB does not allow computed projections
+        // mixed into an exclusion projection
+        const pageIds = records.map((r) => r._id)
+        const withPdf = pageIds.length
+            ? await CLA.find({ _id: { $in: pageIds }, pdf: { $exists: true, $ne: null } }, { _id: 1 }).lean()
+            : []
+        const pdfIds = new Set(withPdf.map((d) => String(d._id)))
 
         return {
             total,
@@ -139,7 +148,7 @@ class AnalyticsApi {
                 version: r.gist_version,
                 signedAt: r.created_at,
                 revokedAt: r.revoked_at || null,
-                hasPdf: r.hasPdf === true,
+                hasPdf: pdfIds.has(String(r._id)),
                 fields: parseCustomFields(r.custom_fields)
             }))
         }

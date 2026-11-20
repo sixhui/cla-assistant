@@ -297,7 +297,7 @@ class ClaApi {
 
     async validateAllPullRequests(req, item) {
         let pullRequests = []
-        const token = req.args.token ? req.args.token : req.user.token
+        const token = req.args.token ? req.args.token : (req.user ? req.user.token : config.server.github.token)
 
         try {
             const resp = await github.callWithGitHubApp({
@@ -452,7 +452,9 @@ class ClaApi {
                     owner: req.args.owner,
                     user: ghUser.login,
                     item: item,
-                    token: item.token
+                    token: item.token || config.server.github.token
+                }).catch(function (err) {
+                    logger.error("recheck after upload failed: " + (err && (err.message || err)))
                 })
                 return signed
 
