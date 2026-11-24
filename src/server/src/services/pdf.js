@@ -10,6 +10,9 @@ const FONT_BOLD = path.join(__dirname, "..", "..", "assets", "fonts", "NotoSerif
 
 const stripMarkdown = (text) => {
     return String(text || "")
+        // unescape markdown backslash escapes (e.g. "1\." -> "1."),
+        // mirroring GitHub rendering
+        .replace(/\\([!"#$%&'()*+,\-./:;<=>?@\[\\\]^_`{|}~])/g, "$1")
         .replace(/!\[([^\]]*)\]\(([^)]*)\)/g, "$1")
         .replace(/\[([^\]]*)\]\(([^)]*)\)/g, "$1 ($2)")
         .replace(/\*\*([^*]+)\*\*/g, "$1")
@@ -20,13 +23,41 @@ const stripMarkdown = (text) => {
         .replace(/`([^`]+)`/g, "$1")
 }
 
+// Render text with **bold** spans: shield them, strip the remaining
+// markdown markers, then emit plain/bold segments on one line.
+function renderInline(doc, text, opts) {
+    opts = opts || {}
+    const bolds = []
+    const shielded = String(text || "").replace(/\*\*[^*]+\*\*/g, function (m) {
+        bolds.push(m.slice(2, -2))
+        return "\u0001B" + (bolds.length - 1) + "\u0001"
+    })
+    const cleaned = stripMarkdown(shielded)
+    const parts = cleaned.split(/(\u0001B\d+\u0001)/g).filter(function (p) { return p !== "" })
+    parts.forEach(function (part, idx) {
+        const o = Object.assign({}, opts)
+        if (idx < parts.length - 1) {
+            o.continued = true
+        }
+        const bm = part.match(/^\u0001B(\d+)\u0001$/)
+        if (bm) {
+            doc.font(FONT_BOLD).text(bolds[parseInt(bm[1], 10)], o)
+        } else {
+            doc.font(FONT_REGULAR).text(part, o)
+        }
+    })
+}
+
 // Minimal markdown layout: headings, lists, blockquotes, horizontal rules.
 // CLA texts are simple documents; rich rendering is out of scope.
 function renderClaText(doc, text) {
     const headingSizes = [20, 16, 14, 12.5, 11.5, 11]
     const lines = String(text || "").split(/\r?\n/)
     lines.forEach((rawLine) => {
-        const line = rawLine.trim()
+        let line = rawLine.trim()
+        // a trailing backslash is a markdown hard line break; the line
+        // break itself is already preserved by the line-by-line rendering
+        line = line.replace(/\\$/, "").trim()
         let match
         if (!line) {
             doc.moveDown(0.5)
@@ -40,32 +71,45 @@ function renderClaText(doc, text) {
             return
         }
         if ((match = line.match(/^(#{1,6})\s+(.*)$/))) {
-            const size = headingSizes[match[1].length - 1] || 11
-            // level 1-2 headings are centered, matching the signing page style
-            const align = match[1].length <= 2 ? "center" : "left"
-            doc.moveDown(0.7)
-            doc.font(FONT_BOLD).fontSize(size)
-                .fillColor(match[1].length <= 2 ? "#1a3a5c" : "#111111")
-                .text(stripMarkdown(match[2]), { align: align })
-            doc.moveDown(0.3)
+            // level-1: centered, bold, large; level-2: centered, bold, body
+            // size; deeper headings render as plain body text
+            if (match[1].length === 1) {
+                doc.font(FONT_BOLD).fontSize(headingSizes[0]).fillColor("#1a3a5c")
+                    .text(stripMarkdown(match[2]), { align: "center" })
+                doc.moveDown(0.3)
+                return
+            }
+            if (match[1].length === 2) {
+                doc.font(FONT_BOLD).fontSize(10.5).fillColor("#222222")
+                    .text(stripMarkdown(match[2]), { align: "center" })
+                doc.moveDown(0.2)
+                return
+            }
+            doc.font(FONT_REGULAR).fontSize(10.5).fillColor("#222222")
+                .text(stripMarkdown(match[2]))
+            doc.moveDown(0.2)
             return
         }
         if ((match = line.match(/^[-*+]\s+(.*)$/))) {
-            doc.font(FONT_REGULAR).fontSize(10.5).fillColor("#222222").text("\u2022  " + stripMarkdown(match[1]), { indent: 18 })
+            doc.fontSize(10.5).fillColor("#222222")
+            renderInline(doc, "\u2022  " + match[1], { indent: 18 })
             doc.moveDown(0.15)
             return
         }
         if ((match = line.match(/^(\d{1,3})[.)]\s+(.*)$/))) {
-            doc.font(FONT_REGULAR).fontSize(10.5).fillColor("#222222").text(match[1] + ".  " + stripMarkdown(match[2]), { indent: 18 })
+            doc.fontSize(10.5).fillColor("#222222")
+            renderInline(doc, match[1] + ".  " + match[2], { indent: 18 })
             doc.moveDown(0.15)
             return
         }
         if ((match = line.match(/^>\s+(.*)$/))) {
-            doc.font(FONT_REGULAR).fontSize(10.5).fillColor("#555555").text(stripMarkdown(match[1]), { indent: 18 })
+            doc.fontSize(10.5).fillColor("#555555")
+            renderInline(doc, match[1], { indent: 18 })
             doc.moveDown(0.15)
             return
         }
-        doc.font(FONT_REGULAR).fontSize(10.5).fillColor("#222222").text(stripMarkdown(line))
+        doc.fontSize(10.5).fillColor("#222222")
+        renderInline(doc, line)
         doc.moveDown(0.2)
     })
 }
@@ -76,6 +120,24 @@ function formatDateTime(date) {
     const pad = (n) => String(n).padStart(2, "0")
     return d.getUTCFullYear() + "-" + pad(d.getUTCMonth() + 1) + "-" + pad(d.getUTCDate()) +
         " " + pad(d.getUTCHours()) + ":" + pad(d.getUTCMinutes()) + ":" + pad(d.getUTCSeconds()) + " UTC"
+}
+
+// Replace <key> placeholders in the CLA text with the signatory data.
+// Known keys: every custom-field key from the metadata plus user,
+// account-name (GitHub login), userId and date (signing date, YYYY-MM-DD).
+function fillPlaceholders(text, data) {
+    const fields = parseCustomFields(data.customFields)
+    const values = {}
+    Object.keys(fields).forEach(function (k) { values[k] = fields[k] })
+    values.user = data.user
+    values["account-name"] = data.user
+    values.userId = data.userId
+    values.date = data.signedAt ? new Date(data.signedAt).toISOString().slice(0, 10) : ""
+    let out = String(text || "")
+    Object.keys(values).forEach(function (k) {
+        out = out.split("<" + k + ">").join(values[k] == null ? "" : String(values[k]))
+    })
+    return out
 }
 
 function parseCustomFields(raw) {
@@ -222,21 +284,8 @@ function generateSignaturePdf(data) {
             doc.on("end", () => resolve(Buffer.concat(chunks)))
             doc.on("error", reject)
 
-            doc.font(FONT_BOLD).fontSize(18).fillColor("#111111")
-                .text("Contributor License Agreement / \u8d21\u732e\u8005\u8bb8\u53ef\u534f\u8bae", { align: "center" })
-            if (data.owner || data.repo) {
-                doc.moveDown(0.3)
-                doc.font(FONT_REGULAR).fontSize(11).fillColor("#555555")
-                    .text("Repository: " + (data.owner ? data.owner + "/" : "") + (data.repo || "-"), { align: "center" })
-            }
-            doc.moveDown(0.4)
-            doc.moveTo(doc.page.margins.left, doc.y).lineTo(doc.page.width - doc.page.margins.right, doc.y)
-                .lineWidth(1.2).strokeColor("#333333").stroke()
-            doc.moveDown(0.8)
 
-            renderClaText(doc, data.claText)
-
-            renderSignatureBlock(doc, data)
+            renderClaText(doc, fillPlaceholders(data.claText, data))
 
             doc.end()
         } catch (error) {

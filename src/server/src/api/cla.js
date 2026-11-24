@@ -556,6 +556,20 @@ async function markdownRender(content, token, owner) {
     return result
 }
 
+// Remove <key> placeholders (custom-field keys + user/account-name/userId/date)
+// from the rendered CLA html; they are filled with real values only in the
+// signed PDF.
+function stripPlaceholders(html, metadataContent) {
+    const keys = ["user", "userId", "date", "account-name"]
+    const matches = String(metadataContent || "").match(/["\w]+\s*:/g) || []
+    matches.forEach(function (entry) { keys.push(entry.replace(/[^\w]/g, "")) })
+    let out = String(html || "")
+    keys.forEach(function (k) {
+        out = out.split("<" + k + ">").join("")
+    })
+    return out
+}
+
 async function renderFiles(files, token, owner) {
     let content
     try {
@@ -573,7 +587,7 @@ async function renderFiles(files, token, owner) {
     const data = await Promise.all([contentPromise, metaPromise])
 
     let gistContent = {}
-    gistContent.raw = data[0] ? data[0].raw : undefined
+    gistContent.raw = data[0] ? stripPlaceholders(data[0].raw, files && files.metadata ? files.metadata.content : "") : undefined
     gistContent.meta = data[1] ? data[1].raw : undefined
 
     return gistContent
